@@ -1,6 +1,39 @@
+# secrets
 .env
-bls-auto-482107-*.json
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Google service account / OAuth
+bls-auto-*.json
+*credentials*.json
+*service-account*.json
+*service_account*.json
+token.json
+client_secret*.json
+
+# generated results
 data/
+*.xlsx
+
+# python
 .venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# tools / OS
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+*.log
+.python-version
