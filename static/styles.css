@@ -104,6 +104,8 @@ select {
   gap: 0.75rem 1rem;
 }
 
+.span-2 { grid-column: 1 / -1; }
+
 .readonly {
   min-height: 2.35rem;
   padding: 0.45rem 0.6rem;
@@ -111,6 +113,12 @@ select {
 
 .readonly a { color: var(--link); word-break: break-all; }
 .readonly.empty { color: #b3b3b3; }
+
+.readonly-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
 
 .actions {
   display: flex;
@@ -176,8 +184,18 @@ pre {
 
 .tag {
   display: inline-block;
-  padding: 0.1rem 0.4rem;
+  padding: 0.15rem 0.45rem;
   border-radius: 3px;
+  background: #f3f3f5;
+  color: #444;
+}
+
+.tag.ok {
+  background: #e7f6ec;
+  color: #1b7a3d;
+}
+
+.tag.bad {
   background: #fdecef;
   color: #d22f47;
 }

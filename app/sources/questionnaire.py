@@ -10,7 +10,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2.service_account import Credentials
 
 from app.config import NOTION_TOKEN, sa_path
-from app.sources.crm import NOTION_VERSION, notion_page_id
+from app.sources.notion import NOTION_VERSION, notion_page_id
 from app.sources.sheet import SCOPES
 
 _DRIVE_ID_RE = [
@@ -70,7 +70,7 @@ def fetch_questionnaire_from_notion(crm_url: str) -> dict:
         if not files:
             return {
                 "ok": False,
-                "error": "В CRM пустое поле «Анкета БЛС»",
+                "error": "В Notion пустое поле «Анкета БЛС»",
                 "text": "",
                 "source": "notion",
             }

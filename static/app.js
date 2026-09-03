@@ -45,11 +45,32 @@ function formatElapsed(sec) {
   return `${m} мин ${s} сек`;
 }
 
+function formatRespondents(contact, noncontact) {
+  const c = Number(contact);
+  const n = Number(noncontact);
+  const left = Number.isFinite(c) ? c : 400;
+  const right = Number.isFinite(n) ? n : 400;
+  return `${left} контакт / ${right} неконтакт`;
+}
+
+function respondentsFromPayload(payload) {
+  const first = Array.isArray(payload) ? payload[0] : payload;
+  if (!first || typeof first !== "object") return "";
+  const block = Object.values(first)[0] || {};
+  const meta = block.metadata || {};
+  if (meta.total_contact_group == null && meta.total_noncontact_group == null) {
+    return "";
+  }
+  return formatRespondents(meta.total_contact_group, meta.total_noncontact_group);
+}
+
 function renderFields(item) {
   fillReadonly($("f-date"), item && item.submitted_at);
   fillReadonly($("f-type"), item && item.research_type);
   fillReadonly($("f-dl"), item && item.dl);
   fillReadonly($("f-crm"), item && item.crm_url, true);
+  fillReadonly($("f-targeting"), item && item.targeting);
+  fillReadonly($("f-respondents"), item ? formatRespondents(item.respondents_contact, item.respondents_noncontact) : "");
   fillReadonly($("f-elapsed"), "");
   fillReadonly($("f-result"), item && item.result_url, true);
 }
@@ -100,6 +121,21 @@ async function postJson(url, body, signal) {
   return data;
 }
 
+function sourceLabel(value) {
+  if (value === "crm") return "CRM";
+  if (value === "notion") return "Notion";
+  if (value === "drive") return "Drive";
+  if (value === "name") return "название РК";
+  if (value === "crm+notion") return "CRM + Notion";
+  return value || "нет";
+}
+
+function sourceTag(label, source, ok) {
+  const state = ok ? "ок" : "ошибка";
+  const cls = ok ? "ok" : "bad";
+  return `<span class="tag ${cls}">${label} - ${sourceLabel(source)} - ${state}</span>`;
+}
+
 function collectPreview(pack) {
   const q = pack.questionnaire || {};
   const crm = pack.crm || {};
@@ -108,12 +144,16 @@ function collectPreview(pack) {
     advertised_brand: pack.advertised_brand,
     geo: pack.geo,
     targeting: pack.targeting,
+    sources: pack.sources || {},
     questionnaire_ok: q.ok,
+    questionnaire_source: q.source || "",
     questionnaire_error: q.error || "",
     questionnaire_name: q.name || "",
     questionnaire_text: q.text || "",
     crm_ok: crm.ok,
-    crm_error: crm.error || "",
+    crm_source: crm.source || "",
+    crm_deal_id: crm.deal_id || "",
+    crm_error: crm.error || crm.crm_error || "",
     crm_properties: crm.properties || {},
     comment: pack.campaign.comment,
   };
@@ -127,13 +167,23 @@ btnCollect.addEventListener("click", async () => {
   try {
     const pack = await postJson("/api/collect", { row: current.row });
     collected = true;
+    current.targeting = pack.targeting || "";
+    current.respondents_contact = pack.respondents_contact;
+    current.respondents_noncontact = pack.respondents_noncontact;
+    fillReadonly($("f-targeting"), current.targeting);
+    fillReadonly($("f-respondents"), formatRespondents(current.respondents_contact, current.respondents_noncontact));
     $("collect-card").hidden = false;
-    const qOk = pack.questionnaire && pack.questionnaire.ok;
-    const crmOk = pack.crm && pack.crm.ok;
+    const q = pack.questionnaire || {};
+    const crm = pack.crm || {};
+    const src = pack.sources || {};
+    const qOk = Boolean(q.ok && q.text);
+    const crmOk = Boolean(crm.ok);
     $("collect-meta").innerHTML =
-      `<span class="tag">${qOk ? "анкета ок" : "анкета ошибка"}</span>` +
-      `<span class="tag">${crmOk ? "CRM ок" : "CRM ошибка"}</span>` +
-      `<span>бренд: ${pack.advertised_brand || "—"}</span>`;
+      sourceTag("Карточка", crm.source || src.brand || "crm", crmOk) +
+      sourceTag("Бренд", src.brand, Boolean(pack.advertised_brand)) +
+      sourceTag("Гео", src.geo, Boolean(pack.geo)) +
+      sourceTag("ЦА", src.targeting, Boolean(pack.targeting)) +
+      sourceTag("Анкета", src.questionnaire || q.source, qOk);
     $("collect-view").textContent = JSON.stringify(collectPreview(pack), null, 2);
     btnModel.disabled = !qOk;
     setStatus(
@@ -172,6 +222,8 @@ btnModel.addEventListener("click", async () => {
     $("model-view").textContent = JSON.stringify(result.payload, null, 2);
     fillReadonly($("f-elapsed"), formatElapsed(result.elapsed_sec));
     fillReadonly($("f-result"), result.spreadsheet_url, true);
+    const modeled = respondentsFromPayload(result.payload);
+    if (modeled) fillReadonly($("f-respondents"), modeled);
     if (current && result.spreadsheet_url) current.result_url = result.spreadsheet_url;
     if (result.gas_error) {
       setStatus(`Модель готова за ${formatElapsed(result.elapsed_sec)}, таблица: ${result.gas_error}`, "bad");
