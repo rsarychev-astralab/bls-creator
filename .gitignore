@@ -1,0 +1,6 @@
+.env
+bls-auto-482107-*.json
+data/
+.venv/
+__pycache__/
+*.pyc

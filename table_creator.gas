@@ -1,0 +1,249 @@
+function doPost(e) {
+  try {
+    Logger.log('=== BRAND LIFT GAS START ===');
+
+    if (!e || !e.postData || !e.postData.contents) {
+      return jsonResponse(400, { ok: false, error: "No data received" });
+    }
+
+    var payload = JSON.parse(e.postData.contents);
+
+    if (!Array.isArray(payload)) {
+      if (payload && payload.data && Array.isArray(payload.data)) payload = payload.data;
+      else if (payload && payload.payload && Array.isArray(payload.payload)) payload = payload.payload;
+      else payload = [payload];
+    }
+
+    var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm");
+    var firstProject = payload[0];
+    var projectName = firstProject ? Object.keys(firstProject)[0] : "Brand Lift Report";
+    var cleanName = String(projectName).replace(/[\\/:*?"<>|]/g, '_').substring(0, 100);
+    var ssName = cleanName + ' — ' + timestamp;
+
+    var ss = SpreadsheetApp.create(ssName);
+    var sheet = ss.getSheets()[0];
+    sheet.setName("Brand Lift Data");
+    var locale = (ss.getSpreadsheetLocale && ss.getSpreadsheetLocale()) ? ss.getSpreadsheetLocale() : '';
+    var isRU = /^ru/i.test(locale); // ru_RU и т.п.
+
+
+    try { ss.addEditor("r.sarychev@astralab.ai"); } catch (err1) {}
+
+    var row = 1;
+
+    payload.forEach(function (projectObj, idx) {
+      var projectKey = Object.keys(projectObj)[0];
+      var project = projectObj[projectKey] || {};
+
+      sheet.getRange(row, 1).setValue('Проект ' + (idx + 1) + ':');
+      sheet.getRange(row, 2).setValue(projectKey);
+      sheet.getRange(row, 1, 1, 7).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold');
+      row += 2;
+
+      var totals = { total_contact_group: 0, total_noncontact_group: 0 };
+      if (project.metadata) {
+        totals.total_contact_group = Number(project.metadata.total_contact_group) || 0;
+        totals.total_noncontact_group = Number(project.metadata.total_noncontact_group) || 0;
+      }
+
+      if (project.questions && Array.isArray(project.questions)) {
+        project.questions.forEach(function (question, qIdx) {
+          row = renderQuestionBlock(sheet, question, qIdx + 1, row, totals, isRU);
+          row += 2;
+        });
+      }
+
+      row += 1;
+    });
+
+    sheet.autoResizeColumns(1, Math.max(sheet.getLastColumn(), 7));
+
+    // фильтр безопасно
+    try { var f = sheet.getFilter(); if (f) f.remove(); } catch (e1) {}
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow > 1 && lastCol > 1) {
+      try { sheet.getRange(1, 1, lastRow, lastCol).createFilter(); } catch (e2) {}
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      spreadsheetId: ss.getId(),
+      spreadsheetUrl: ss.getUrl(),
+      spreadsheetName: ssName
+    });
+
+  } catch (err) {
+    Logger.log('Error: ' + err + '\n' + (err && err.stack ? err.stack : ''));
+    return jsonResponse(500, { ok: false, error: String(err), stack: err && err.stack ? err.stack : null });
+  }
+}
+
+function renderQuestionBlock(sheet, question, qNum, startRow, totals, isRU) {
+  var row = startRow;
+
+  var totalContact = Number(totals.total_contact_group) || 0;
+  var totalNoncontact = Number(totals.total_noncontact_group) || 0;
+
+  // Заголовок вопроса
+  sheet.getRange(row, 1).setValue('Вопрос ' + qNum + ':');
+  sheet.getRange(row, 2).setValue(question.question_text || '');
+  sheet.getRange(row, 1, 1, 7).setBackground('#d9ead3').setFontWeight('bold');
+  row++;
+
+  if (question.responses && question.responses.length > 0) {
+    var headers = ['Вариант ответа', 'Контакт', 'Не контакт', 'Контакт %', 'Неконтакт %', 'Прирост', 'Направление'];
+
+    sheet.getRange(row, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(row, 1, 1, headers.length).setBackground('#c9daf8').setFontWeight('bold');
+
+    var headerRow = row;
+    row++;
+
+    var dataStartRow = row;
+    var n = question.responses.length;
+
+    // Данные: B/C — числа, D/E/F — формулы поставим позже
+    var data = question.responses.map(function (resp) {
+      return [
+        resp.option || '',
+        Number(resp.contact_count) || 0,
+        Number(resp.noncontact_count) || 0,
+        '', // Контакт %
+        '', // Неконтакт %
+        '', // Прирост (формула)
+        '' // Прирост направление
+      ];
+    });
+
+    sheet.getRange(dataStartRow, 1, n, headers.length).setValues(data);
+
+    sheet.getRange(headerRow, 1, 1 + n, headers.length)
+      .setBorder(true, true, true, true, true, true);
+
+    // ==== Блок итогов (ставим раньше, чтобы знать respondentsRow) ====
+    row = dataStartRow + n;
+    row++; // пустая строка
+
+    sheet.getRange(row, 1).setValue('Итого:').setFontWeight('bold');
+    row++;
+
+    // Всего ответов: формулами (п.2)
+    sheet.getRange(row, 1).setValue('Всего ответов:').setFontWeight('bold');
+    sheet.getRange(row, 2).setFormula('=SUM(B' + dataStartRow + ':B' + (dataStartRow + n - 1) + ')');
+    sheet.getRange(row, 3).setFormula('=SUM(C' + dataStartRow + ':C' + (dataStartRow + n - 1) + ')');
+    var totalAnswersRow = row;
+    row++;
+
+    // Всего респондентов (делитель)
+    sheet.getRange(row, 1).setValue('Всего респондентов:').setFontWeight('bold');
+    sheet.getRange(row, 2).setValue(totalContact);
+    sheet.getRange(row, 3).setValue(totalNoncontact);
+    var respondentsRow = row; // делитель для процентов
+    row++;
+
+    // Max Positive Lift: формулой (макс по F)
+    sheet.getRange(row, 1).setValue('Прирост составил').setFontWeight('bold');
+sheet.getRange(row, 2)
+  .setFormula('=MAX(F' + dataStartRow + ':F' + (dataStartRow + data.length - 1) + ')')
+  .setNumberFormat('+0.00%;-0.00%;0.00%');
+row++;
+
+    // ==== Формулы процентов (D/E) и прироста (F) ====
+    var contactPct = [];
+    var noncontactPct = [];
+    var liftFormulas = [];
+
+    for (var i = 0; i < n; i++) {
+      var r = dataStartRow + i;
+
+      // ВАЖНО: без *100, т.к. ячейки форматируем как проценты
+      contactPct.push(['=B' + r + '/$B$' + respondentsRow]);
+      noncontactPct.push(['=C' + r + '/$C$' + respondentsRow]);
+
+      // Прирост = Контакт % - Неконтакт %
+      liftFormulas.push(['=D' + r + '-E' + r]);
+    }
+
+    sheet.getRange(dataStartRow, 4, n, 1).setFormulas(contactPct);
+    sheet.getRange(dataStartRow, 5, n, 1).setFormulas(noncontactPct);
+    sheet.getRange(dataStartRow, 6, n, 1).setFormulas(liftFormulas);
+
+// ===== Направление (G) — от знака Прироста (F) =====
+var dirFormulas = [];
+for (var i = 0; i < n; i++) {
+  var rr = dataStartRow + i;
+  dirFormulas.push([
+    '=IF(F' + rr + '>0;"Положительный";IF(F' + rr + '<0;"Отрицательный";"Без прироста"))'
+  ]);
+}
+sheet.getRange(dataStartRow, 7, n, 1).setFormulas(dirFormulas);
+
+// ===== Динамическая подсветка колонки G по знаку F =====
+var gRange = sheet.getRange(dataStartRow, 7, n, 1);
+
+var rules = sheet.getConditionalFormatRules() || [];
+var filtered = [];
+for (var rIdx = 0; rIdx < rules.length; rIdx++) {
+  var rule = rules[rIdx];
+  var ranges = rule.getRanges();
+  var intersects = false;
+  for (var a = 0; a < ranges.length; a++) {
+    if (ranges[a].getSheet().getSheetId() === sheet.getSheetId()) {
+      // грубая проверка пересечения по строкам/колонкам
+      var rg = ranges[a];
+      var r1 = rg.getRow(), r2 = rg.getRow() + rg.getNumRows() - 1;
+      var c1 = rg.getColumn(), c2 = rg.getColumn() + rg.getNumColumns() - 1;
+      var nr1 = gRange.getRow(), nr2 = gRange.getRow() + gRange.getNumRows() - 1;
+      var nc1 = gRange.getColumn(), nc2 = gRange.getColumn() + gRange.getNumColumns() - 1;
+      if (!(r2 < nr1 || r1 > nr2 || c2 < nc1 || c1 > nc2)) {
+        intersects = true;
+        break;
+      }
+    }
+  }
+  if (!intersects) filtered.push(rule);
+}
+
+// positive: F > 0
+filtered.push(
+  SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$F' + dataStartRow + '>0')
+    .setBackground('#b6d7a8')
+    .setFontColor('#274e13')
+    .setRanges([gRange])
+    .build()
+);
+
+// negative: F < 0
+filtered.push(
+  SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$F' + dataStartRow + '<0')
+    .setBackground('#ea9999')
+    .setFontColor('#660000')
+    .setRanges([gRange])
+    .build()
+);
+
+sheet.setConditionalFormatRules(filtered);
+
+
+    // Форматы
+    sheet.getRange(dataStartRow, 4, n, 1).setNumberFormat('0.00%');
+    sheet.getRange(dataStartRow, 5, n, 1).setNumberFormat('0.00%');
+    // Прирост в п.п. (проценты) — если хочешь в пунктах: 0.0% + знак
+    sheet.getRange(dataStartRow, 6, n, 1).setNumberFormat('+0.00%;-0.00%;0.00%');
+
+    // Если хочешь “pp” как число (например 2.7), тогда вместо формулы выше используй: =(D-E)*100
+    // и формат '+0.0;-0.0;0.0'
+    // (я оставил процентный формат, ближе к скрину)
+
+  }
+
+  return row;
+}
+
+function jsonResponse(statusCode, obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}

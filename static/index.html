@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BLS Creator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <h1>BLS Creator</h1>
+      <p>Одна кампания за запуск. Сначала сбор, потом модель.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <h2>1. Кампания</h2>
+      <label for="campaign">Название РК</label>
+      <select id="campaign">
+        <option value="">Загрузка списка…</option>
+      </select>
+
+      <div class="grid" style="margin-top: 0.9rem;">
+        <div>
+          <label>Дата заявки</label>
+          <div id="f-date" class="readonly empty">—</div>
+        </div>
+        <div>
+          <label>Тип исследования</label>
+          <div id="f-type" class="readonly empty">—</div>
+        </div>
+        <div>
+          <label>DL</label>
+          <div id="f-dl" class="readonly empty">—</div>
+        </div>
+        <div>
+          <label>Ссылка в CRM</label>
+          <div id="f-crm" class="readonly empty">—</div>
+        </div>
+        <div>
+          <label>Время генерации</label>
+          <div id="f-elapsed" class="readonly empty">—</div>
+        </div>
+        <div>
+          <label>Результаты исследования</label>
+          <div id="f-result" class="readonly empty">—</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn-collect" id="btn-collect" disabled>Собрать данные исследования</button>
+        <button type="button" class="btn-model" id="btn-model" disabled>Смоделировать исследование</button>
+        <button type="button" class="btn-stop" id="btn-stop" disabled>Стоп</button>
+      </div>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="card" id="collect-card" hidden>
+      <h2>Собранные данные</h2>
+      <div id="collect-meta" class="meta-row"></div>
+      <pre id="collect-view"></pre>
+    </section>
+
+    <section class="card" id="model-card" hidden>
+      <h2>Результат модели</h2>
+      <pre id="model-view"></pre>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
