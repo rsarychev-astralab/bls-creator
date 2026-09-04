@@ -10,6 +10,28 @@ _PROP_TARGET = "ЦА + Таргетирование"
 _PROP_BRAND = "Рекламодатель (Бренд)"
 
 
+def notion_deal_url(sheet_url: str, crm: dict | None = None) -> str:
+    raw = (sheet_url or "").strip()
+    if "notion." in raw.lower():
+        return raw
+    page_id = ((crm or {}).get("page_id") or "").replace("-", "")
+    if page_id:
+        return f"https://www.notion.so/{page_id}"
+    return ""
+
+
+def crm_deal_url(crm: dict | None) -> str:
+    if not crm:
+        return ""
+    url = (crm.get("url") or "").strip()
+    if "crm.al-ad.tech" in url:
+        return url
+    deal_id = crm.get("deal_id") or ""
+    if deal_id:
+        return f"https://crm.al-ad.tech/deals?deal={deal_id}"
+    return ""
+
+
 def brand_from_name(name: str) -> str:
     text = (name or "").strip()
     if text.startswith("I /"):
@@ -100,6 +122,10 @@ def collect_campaign(row_num: int) -> dict:
         "advertised_brand": brand,
         "geo": props.get(_PROP_GEO, ""),
         "targeting": props.get(_PROP_TARGET, ""),
+        "crm_deal_url": crm_deal_url(crm),
+        "notion_url": notion_deal_url(campaign.get("crm_url") or "", crm),
+        "bt_url": crm.get("bt_url") or "",
+        "closing": crm.get("closing") or [],
         "respondents_contact": 400,
         "respondents_noncontact": 400,
         "questionnaire": questionnaire,
@@ -109,6 +135,8 @@ def collect_campaign(row_num: int) -> dict:
             "geo": sources[_PROP_GEO],
             "targeting": sources[_PROP_TARGET],
             "questionnaire": sources["questionnaire"],
+            "bt": crm.get("bt_source") or ("crm" if crm.get("bt_url") else ""),
+            "closing": "crm" if any((x.get("value") for x in (crm.get("closing") or []))) else "",
         },
     }
     _PACKS[row_num] = pack

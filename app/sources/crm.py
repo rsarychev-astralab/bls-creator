@@ -55,6 +55,53 @@ def field_text(field: dict | None) -> str:
     return ""
 
 
+CLOSING_SPEC = (
+    ("volumeActual", "Объем факт"),
+    ("ctrActual", "CTR факт"),
+    ("vtrActual", "VTR факт"),
+    ("passingIndexActual", "Passing Index факт"),
+    ("brandRateActual", "BR факт"),
+    ("timeActual", "Время факт"),
+    ("depthActual", "Глубина факт"),
+    ("conversionsActual", "Количество конверсий факт"),
+    ("feedback", "FeedBack"),
+)
+
+_CLOSING_METRIC = {
+    "ctrActual": "ctr",
+    "vtrActual": "vtr",
+    "passingIndexActual": "passingIndex",
+    "brandRateActual": "bounceRate",
+    "timeActual": "dwellTime",
+    "depthActual": "depth",
+    "conversionsActual": "conversions",
+}
+
+
+def extract_closing(deal: dict) -> list[dict]:
+    by_key = {}
+    for sec in deal.get("sections") or []:
+        if sec.get("key") != "closing":
+            continue
+        for field in sec.get("fields") or []:
+            key = field.get("key") or ""
+            if key:
+                by_key[key] = field_text(field)
+    metrics = ((deal.get("dealKpi") or {}).get("metrics") or {})
+    feedback = ((deal.get("dealKpi") or {}).get("closingFeedback") or "")
+    rows = []
+    for key, label in CLOSING_SPEC:
+        value = (by_key.get(key) or "").strip()
+        if not value and key in _CLOSING_METRIC:
+            actual = (metrics.get(_CLOSING_METRIC[key]) or {}).get("actual")
+            if actual not in (None, ""):
+                value = str(actual).strip()
+        if not value and key == "feedback":
+            value = str(feedback).strip()
+        rows.append({"key": key, "label": label, "value": value})
+    return rows
+
+
 def extract_deal_properties(deal: dict) -> dict:
     flags = deal.get("flags") or {}
     content = deal.get("dealContent") or {}
@@ -77,6 +124,51 @@ def extract_deal_properties(deal: dict) -> dict:
 
 def survey_files(deal: dict) -> list[dict]:
     return list(section_field(deal, "brandLiftSurvey").get("files") or [])
+
+
+def extract_bt_url(deal: dict) -> str:
+    field = section_field(deal, "btUrl")
+    for item in field.get("files") or []:
+        url = (item.get("downloadUrl") or "").strip()
+        if "docs.google.com" in url or "spreadsheets" in url:
+            return url
+        fid = str(item.get("id") or "")
+        if fid.startswith("legacy:") and ":" in fid:
+            sheet_id = fid.rsplit(":", 1)[-1]
+            if sheet_id:
+                return f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+    return ""
+
+
+def fetch_bt_url_from_catalog(title: str, deal_id: str = "") -> str:
+    query = (title or "").strip()
+    if not query:
+        return ""
+    data = _json("GET", "/buying-tables", params={"search": query, "limit": "20"})
+    for item in data.get("items") or []:
+        linked = []
+        for key in ("linkedDeals", "autoLinkedDeals", "notionLinkedDeals"):
+            linked.extend(item.get(key) or [])
+        ids = {x.get("id") for x in linked if isinstance(x, dict)}
+        sheet_name = (item.get("sheetName") or "").strip()
+        if deal_id and deal_id not in ids and sheet_name != query:
+            continue
+        sid = item.get("spreadsheetId") or ""
+        if not sid:
+            continue
+        try:
+            url_data = _json(
+                "GET",
+                "/buying-tables/spreadsheet-url",
+                params={"spreadsheetId": sid, "sheetName": sheet_name},
+            )
+            return (
+                (url_data.get("url") or url_data.get("spreadsheetUrl") or "").strip()
+                or f"https://docs.google.com/spreadsheets/d/{sid}"
+            )
+        except Exception:  # noqa: BLE001
+            return f"https://docs.google.com/spreadsheets/d/{sid}"
+    return ""
 
 
 def _store_session(resp: httpx.Response, data: dict) -> str:
@@ -311,6 +403,13 @@ def fetch_crm(url: str, campaign_name: str = "") -> dict:
         deal = fetch_deal(deal_id)
         props = extract_deal_properties(deal)
         questionnaire = fetch_questionnaire_from_crm_deal(deal)
+        title = deal.get("title") or props.get("Название") or campaign_name
+        bt_url = extract_bt_url(deal)
+        bt_source = "crm" if bt_url else ""
+        if not bt_url:
+            bt_url = fetch_bt_url_from_catalog(title, deal_id)
+            if bt_url:
+                bt_source = "crm"
         return {
             "ok": True,
             "error": "",
@@ -318,9 +417,12 @@ def fetch_crm(url: str, campaign_name: str = "") -> dict:
             "deal_id": deal_id,
             "resolved_via": via,
             "url": f"https://crm.al-ad.tech/deals?deal={deal_id}",
-            "title": deal.get("title") or props.get("Название") or "",
+            "title": title,
             "properties": props,
             "questionnaire": questionnaire,
+            "bt_url": bt_url,
+            "bt_source": bt_source,
+            "closing": extract_closing(deal),
         }
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc), "properties": {}}

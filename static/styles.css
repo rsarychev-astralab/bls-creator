@@ -106,6 +106,18 @@ select {
 
 .span-2 { grid-column: 1 / -1; }
 
+.stats-block {
+  margin-top: 0.35rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.stats-block h3 {
+  margin: 0 0 0.7rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .readonly {
   min-height: 2.35rem;
   padding: 0.45rem 0.6rem;

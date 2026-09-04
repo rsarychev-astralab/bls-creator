@@ -64,11 +64,59 @@ function respondentsFromPayload(payload) {
   return formatRespondents(meta.total_contact_group, meta.total_noncontact_group);
 }
 
+function isNotionUrl(url) {
+  return /notion\.(so|com|site)/i.test(url || "");
+}
+
+function isCrmUrl(url) {
+  return /crm\.al-ad\.tech/i.test(url || "");
+}
+
+const CLOSING_FIELDS = [
+  { key: "volumeActual", label: "Объем факт" },
+  { key: "ctrActual", label: "CTR факт" },
+  { key: "vtrActual", label: "VTR факт" },
+  { key: "passingIndexActual", label: "Passing Index факт" },
+  { key: "brandRateActual", label: "BR факт" },
+  { key: "timeActual", label: "Время факт" },
+  { key: "depthActual", label: "Глубина факт" },
+  { key: "conversionsActual", label: "Количество конверсий факт" },
+  { key: "feedback", label: "FeedBack", wide: true },
+];
+
+function renderClosing(rows) {
+  const grid = $("closing-grid");
+  if (!grid) return;
+  const byKey = {};
+  for (const row of rows || []) {
+    if (row && row.key) byKey[row.key] = row.value || "";
+  }
+  grid.innerHTML = "";
+  for (const spec of CLOSING_FIELDS) {
+    const wrap = document.createElement("div");
+    if (spec.wide) wrap.className = "span-2";
+    const label = document.createElement("label");
+    label.textContent = spec.label;
+    const box = document.createElement("div");
+    box.id = "f-closing-" + spec.key;
+    box.className = spec.wide ? "readonly readonly-wrap" : "readonly";
+    fillReadonly(box, byKey[spec.key] || "", false);
+    wrap.appendChild(label);
+    wrap.appendChild(box);
+    grid.appendChild(wrap);
+  }
+}
+
 function renderFields(item) {
+  const notionUrl = (item && (item.notion_url || (isNotionUrl(item.crm_url) ? item.crm_url : ""))) || "";
+  const crmUrl = (item && (item.crm_deal_url || (isCrmUrl(item.crm_url) ? item.crm_url : ""))) || "";
   fillReadonly($("f-date"), item && item.submitted_at);
   fillReadonly($("f-type"), item && item.research_type);
   fillReadonly($("f-dl"), item && item.dl);
-  fillReadonly($("f-crm"), item && item.crm_url, true);
+  fillReadonly($("f-crm"), crmUrl, true);
+  fillReadonly($("f-notion"), notionUrl, true);
+  fillReadonly($("f-bt"), item && item.bt_url, true);
+  renderClosing(item && item.closing);
   fillReadonly($("f-targeting"), item && item.targeting);
   fillReadonly($("f-respondents"), item ? formatRespondents(item.respondents_contact, item.respondents_noncontact) : "");
   fillReadonly($("f-elapsed"), "");
@@ -153,6 +201,10 @@ function collectPreview(pack) {
     crm_ok: crm.ok,
     crm_source: crm.source || "",
     crm_deal_id: crm.deal_id || "",
+    crm_deal_url: pack.crm_deal_url || crm.url || "",
+    notion_url: pack.notion_url || "",
+    bt_url: pack.bt_url || "",
+    closing: pack.closing || [],
     crm_error: crm.error || crm.crm_error || "",
     crm_properties: crm.properties || {},
     comment: pack.campaign.comment,
@@ -170,6 +222,14 @@ btnCollect.addEventListener("click", async () => {
     current.targeting = pack.targeting || "";
     current.respondents_contact = pack.respondents_contact;
     current.respondents_noncontact = pack.respondents_noncontact;
+    current.crm_deal_url = pack.crm_deal_url || "";
+    current.notion_url = pack.notion_url || current.crm_url || "";
+    current.bt_url = pack.bt_url || "";
+    current.closing = pack.closing || [];
+    fillReadonly($("f-crm"), current.crm_deal_url, true);
+    fillReadonly($("f-notion"), current.notion_url, true);
+    fillReadonly($("f-bt"), current.bt_url, true);
+    renderClosing(current.closing);
     fillReadonly($("f-targeting"), current.targeting);
     fillReadonly($("f-respondents"), formatRespondents(current.respondents_contact, current.respondents_noncontact));
     $("collect-card").hidden = false;
@@ -183,7 +243,9 @@ btnCollect.addEventListener("click", async () => {
       sourceTag("Бренд", src.brand, Boolean(pack.advertised_brand)) +
       sourceTag("Гео", src.geo, Boolean(pack.geo)) +
       sourceTag("ЦА", src.targeting, Boolean(pack.targeting)) +
-      sourceTag("Анкета", src.questionnaire || q.source, qOk);
+      sourceTag("Анкета", src.questionnaire || q.source, qOk) +
+      sourceTag("БТ", src.bt, Boolean(pack.bt_url)) +
+      sourceTag("Закрытие", src.closing, Boolean(src.closing));
     $("collect-view").textContent = JSON.stringify(collectPreview(pack), null, 2);
     btnModel.disabled = !qOk;
     setStatus(
@@ -245,6 +307,7 @@ btnModel.addEventListener("click", async () => {
   }
 });
 
+renderClosing([]);
 loadCampaigns().catch((err) => {
   select.innerHTML = '<option value="">Список недоступен</option>';
   setStatus(err.message, "bad");

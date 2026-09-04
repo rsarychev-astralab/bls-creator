@@ -1,5 +1,5 @@
-from app.sources.collect import brand_from_name
-from app.sources.crm import deal_id_from_url, extract_deal_properties
+from app.sources.collect import brand_from_name, crm_deal_url, notion_deal_url
+from app.sources.crm import deal_id_from_url, extract_bt_url, extract_closing, extract_deal_properties
 from app.sources.notion import notion_page_id
 
 
@@ -42,3 +42,52 @@ def test_extract_deal_properties():
 
 def test_brand_from_name():
     assert brand_from_name("I / Pikador AstraCTV Мск Лето-Осень 2026 | jul-sep") == "Pikador"
+
+
+def test_extract_closing():
+    deal = {
+        "sections": [
+            {
+                "key": "closing",
+                "fields": [
+                    {"key": "ctrActual", "value": "0.55"},
+                    {"key": "vtrActual", "value": "76.07"},
+                    {"key": "volumeActual", "value": "3338402"},
+                ],
+            }
+        ]
+    }
+    rows = {x["key"]: x["value"] for x in extract_closing(deal)}
+    assert rows["ctrActual"] == "0.55"
+    assert rows["vtrActual"] == "76.07"
+    assert rows["volumeActual"] == "3338402"
+    assert rows["feedback"] == ""
+
+
+def test_extract_bt_url():
+    deal = {
+        "sections": [
+            {
+                "fields": [
+                    {
+                        "key": "btUrl",
+                        "files": [
+                            {
+                                "id": "legacy:0:1Gr3tWy1wchBQWj9tp_n8c7dL-h1lbr8eXuueohUnLuM",
+                                "downloadUrl": "https://docs.google.com/spreadsheets/d/1Gr3tWy1wchBQWj9tp_n8c7dL-h1lbr8eXuueohUnLuM#gid=750773902",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ]
+    }
+    assert extract_bt_url(deal).endswith("1Gr3tWy1wchBQWj9tp_n8c7dL-h1lbr8eXuueohUnLuM#gid=750773902")
+
+
+def test_deal_urls():
+    sheet = "https://app.notion.com/p/a-lab-ai/DNS-TCL-3bb756004aa880ec954be704e9572980"
+    crm = {"deal_id": "6a7e507bed6862fdb3e7259f", "url": "https://crm.al-ad.tech/deals?deal=6a7e507bed6862fdb3e7259f"}
+    assert notion_deal_url(sheet, crm) == sheet
+    assert crm_deal_url(crm) == "https://crm.al-ad.tech/deals?deal=6a7e507bed6862fdb3e7259f"
+    assert crm_deal_url({"deal_id": "6a7e507bed6862fdb3e7259f"}) == "https://crm.al-ad.tech/deals?deal=6a7e507bed6862fdb3e7259f"
