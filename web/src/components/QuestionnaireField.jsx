@@ -2,25 +2,30 @@ import { FileText, Upload } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-function QuestionnaireField({ name, ok, collected, uploading, onUpload }) {
+function QuestionnaireField({ name, ok, collected, uploading, onUpload, className }) {
   return (
-    <div className="sm:col-span-2">
+    <div className={className}>
       <Label className="flex items-center gap-1.5">
         <FileText className="size-3.5 shrink-0" />
         Анкета
       </Label>
       {ok && name ? (
-        <div className="min-h-9 rounded-lg border border-input bg-card px-2.5 py-1.5 text-sm">
-          {name}
+        <div
+          title={name}
+          className="flex h-9 items-center overflow-hidden rounded-lg border border-input bg-card px-2.5 text-sm"
+        >
+          <span className="truncate">{name}</span>
         </div>
       ) : collected ? (
         <label
           className={cn(
-            "flex min-h-9 cursor-pointer items-center justify-between gap-2 rounded-lg border border-dashed border-input bg-card px-2.5 py-1.5 text-sm text-muted-foreground",
+            "flex h-9 cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-lg border border-dashed border-input bg-card px-2.5 text-sm text-muted-foreground",
             uploading && "pointer-events-none opacity-45"
           )}
         >
-          <span>{uploading ? "Загружаю анкету…" : "Файл не найден. Загрузи .xlsx, .docx, .txt, .md или .csv"}</span>
+          <span className="truncate">
+            {uploading ? "Загружаю анкету…" : "Файл не найден. Загрузи .xlsx, .docx, .txt, .md или .csv"}
+          </span>
           <Upload className="size-4 shrink-0" />
           <input
             type="file"
@@ -35,7 +40,7 @@ function QuestionnaireField({ name, ok, collected, uploading, onUpload }) {
           />
         </label>
       ) : (
-        <div className="min-h-9 rounded-lg border border-input bg-card px-2.5 py-1.5 text-sm text-[#b3b3b3]">
+        <div className="flex h-9 items-center rounded-lg border border-input bg-card px-2.5 text-sm text-[#b3b3b3]">
           —
         </div>
       )}

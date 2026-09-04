@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Calendar,
+  ChartColumn,
   CircleStop,
   ClipboardList,
   Coins,
+  Braces,
   Database,
   FileSpreadsheet,
+  FileText,
   Hourglass,
   Link,
   Megaphone,
@@ -17,9 +20,16 @@ import {
   UsersRound,
 } from "lucide-react";
 import { ClosingBlock } from "@/components/ClosingBlock";
+import { IdleRaccoon, useIdleRaccoon } from "@/components/Critter";
 import { Field } from "@/components/Field";
 import { QuestionnaireField } from "@/components/QuestionnaireField";
 import { SourceBadges } from "@/components/SourceBadges";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -30,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getJson, postForm, postJson } from "@/lib/api";
 import { DONE_PHRASES, MODEL_PHRASES, pickPhrase, shufflePhrases } from "@/lib/modelPhrases";
 import {
@@ -46,6 +55,13 @@ import { cn } from "@/lib/utils";
 
 const NONE = "__none__";
 
+const SLOGANS = [
+  "We create attention",
+  "We create lift",
+  "We create хаос",
+  "We still create attention",
+];
+
 export default function App() {
   const [campaigns, setCampaigns] = useState([]);
   const [row, setRow] = useState(NONE);
@@ -55,7 +71,7 @@ export default function App() {
   const [collecting, setCollecting] = useState(false);
   const [modeling, setModeling] = useState(false);
   const [workOpen, setWorkOpen] = useState(false);
-  const [tab, setTab] = useState("collect");
+  const [workOpenItems, setWorkOpenItems] = useState([]);
   const [badges, setBadges] = useState([]);
   const [collectView, setCollectView] = useState("");
   const [promptView, setPromptView] = useState("");
@@ -66,9 +82,13 @@ export default function App() {
   const [qName, setQName] = useState("");
   const [uploading, setUploading] = useState(false);
   const [waitPhrases, setWaitPhrases] = useState(false);
+  const [sloganIndex, setSloganIndex] = useState(0);
   const abortRef = useRef(null);
+  const raccoonVisible = useIdleRaccoon(collecting || modeling || uploading);
 
   const { notionUrl, crmUrl } = dealLinks(current);
+  const linkCount = [crmUrl, notionUrl, current?.bt_url].filter(Boolean).length;
+  const closingFilled = (current?.closing || []).filter((row) => row && row.value).length;
 
   useEffect(() => {
     if (!waitPhrases) return undefined;
@@ -102,7 +122,7 @@ export default function App() {
   function resetWork() {
     setCollected(false);
     setWorkOpen(false);
-    setTab("collect");
+    setWorkOpenItems([]);
     setBadges([]);
     setCollectView("");
     setPromptView("");
@@ -125,7 +145,7 @@ export default function App() {
     setQOk(questionnaireOk);
     setQName(q.name || (questionnaireOk ? "Анкета найдена" : ""));
     setWorkOpen(true);
-    setTab("collect");
+    setWorkOpenItems(["collect"]);
     setPromptView(pack.prompt || "Промпт ещё не собран");
     setModelView("Сначала смоделируй исследование");
     setBadges([
@@ -220,11 +240,15 @@ export default function App() {
     setModeling(true);
     setWaitPhrases(true);
     try {
-      const result = await postJson("/api/model", { row: current.row }, controller.signal);
+      const result = await postJson(
+        "/api/model",
+        { row: current.row, prompt: promptView },
+        controller.signal
+      );
       setWorkOpen(true);
       if (result.prompt) setPromptView(result.prompt);
       setModelView(JSON.stringify(result.payload, null, 2));
-      setTab("model");
+      setWorkOpenItems((items) => (items.includes("model") ? items : [...items, "model"]));
       setElapsed(formatElapsed(result.elapsed_sec));
       setTokens(formatTokens(result.usage));
       const modeled = respondentsFromPayload(result.payload);
@@ -273,21 +297,29 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="bg-header text-[#fafafa]">
-        <div className="mx-auto max-w-[52rem] px-4 py-4">
+      <header className="bg-header text-[#fafafa] border-b border-[rgba(240,74,94,0.35)]">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-6 py-4">
           <div className="flex items-center gap-3.5">
-            <img src="/logo.svg" alt="AstraLab" width="90" height="20" className="block h-5 w-auto" />
-            <h1 className="text-lg font-bold text-[#fafafa]">BLS Creator</h1>
+            <img src="/logo.svg" alt="AstraLab" width="108" height="24" className="block h-6 w-auto" />
+            <h1 className="group grid text-lg font-bold text-[#fafafa]">
+              <span className="col-start-1 row-start-1 group-hover:invisible">BLS Creator</span>
+              <span className="col-start-1 row-start-1 invisible group-hover:visible">БЛС генератор</span>
+            </h1>
           </div>
-          <p className="mt-1.5 text-sm text-[#999]">
-            Одна кампания за запуск. Сначала сбор, потом модель.
-          </p>
+          <button
+            type="button"
+            onClick={() => setSloganIndex((i) => (i + 1) % SLOGANS.length)}
+            className="cursor-pointer rounded-full border border-primary px-3 py-1 text-[13px] leading-none text-[#fafafa]/80"
+          >
+            {SLOGANS[sloganIndex]}
+          </button>
         </div>
       </header>
+      {raccoonVisible ? <IdleRaccoon /> : null}
 
-      <main className="mx-auto max-w-[52rem] px-4 pb-8">
+      <main className="mx-auto max-w-7xl px-6 pb-8">
         <Card>
-          <CardTitle>1. Кампания</CardTitle>
+          <CardTitle>Кампания</CardTitle>
           <Label htmlFor="campaign" className="flex items-center gap-1.5">
             <Megaphone className="size-3.5 shrink-0" />
             Название РК
@@ -306,20 +338,14 @@ export default function App() {
             </SelectContent>
           </Select>
 
-          <div className="mt-3.5 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+          <div className="mt-3.5 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Дата заявки" icon={Calendar} value={current?.submitted_at} />
             <Field label="Тип исследования" icon={ClipboardList} value={current?.research_type} />
             <Field label="DL" icon={Timer} value={current?.dl} />
-            <Field label="Ссылка в CRM" icon={Link} value={crmUrl} isLink />
-            <Field label="Ссылка на сделку в Notion" icon={NotebookText} value={notionUrl} isLink />
-            <Field label="Ссылка на Buying Table" icon={Table2} value={current?.bt_url} isLink />
-            <ClosingBlock rows={current?.closing} />
             <Field
-              label="ЦА + таргетинг"
-              icon={Users}
-              value={current?.targeting}
-              wrap
-              className="sm:col-span-2"
+              label="Количество респондентов"
+              icon={UsersRound}
+              value={current ? respondents : ""}
             />
             <QuestionnaireField
               name={qName}
@@ -327,16 +353,61 @@ export default function App() {
               collected={collected}
               uploading={uploading}
               onUpload={onUploadQuestionnaire}
-            />
-            <Field
-              label="Количество респондентов"
-              icon={UsersRound}
-              value={current ? respondents : ""}
+              className="sm:col-span-2 lg:col-span-4"
             />
           </div>
 
+          <Accordion type="multiple" className="mt-3 rounded-lg border border-border px-3">
+            <AccordionItem value="links">
+              <AccordionTrigger>
+                <span className="flex items-center gap-1.5">
+                  <Link className="size-3.5 shrink-0" />
+                  Ссылки
+                  <span className="font-normal text-muted-foreground">
+                    {linkCount ? `${linkCount} из 3` : "нет"}
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-1 gap-x-4 gap-y-3 lg:grid-cols-3">
+                  <Field label="Ссылка в CRM" icon={Link} value={crmUrl} isLink />
+                  <Field label="Ссылка на сделку в Notion" icon={NotebookText} value={notionUrl} isLink />
+                  <Field label="Ссылка на Buying Table" icon={Table2} value={current?.bt_url} isLink />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="closing">
+              <AccordionTrigger>
+                <span className="flex items-center gap-1.5">
+                  <ChartColumn className="size-3.5 shrink-0" />
+                  Закрытие
+                  <span className="font-normal text-muted-foreground">
+                    {closingFilled ? `${closingFilled} полей` : "нет"}
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <ClosingBlock rows={current?.closing} />
+              </AccordionContent>
+            </AccordionItem>
+            <AccordionItem value="targeting">
+              <AccordionTrigger>
+                <span className="flex items-center gap-1.5">
+                  <Users className="size-3.5 shrink-0" />
+                  ЦА + таргетинг
+                  <span className="font-normal text-muted-foreground">
+                    {current?.targeting ? "есть" : "нет"}
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <Field value={current?.targeting} wrap />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
           <div className="mt-4 flex flex-wrap gap-2.5">
-            <Button type="button" disabled={!current || collecting || modeling} onClick={onCollect}>
+            <Button type="button" variant="collect" disabled={!current || collecting || modeling} onClick={onCollect}>
               <Database />
               Собрать данные исследования
             </Button>
@@ -374,7 +445,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="mt-3.5 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+          <div className="mt-3.5 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Время генерации" icon={Hourglass} value={elapsed} />
             <Field label="Токены" icon={Coins} value={tokens} />
             <Field
@@ -389,29 +460,57 @@ export default function App() {
 
         {workOpen ? (
           <Card>
-            <Tabs value={tab} onValueChange={setTab}>
-              <TabsList>
-                <TabsTrigger value="collect">Собранные данные</TabsTrigger>
-                <TabsTrigger value="prompt">Промпт</TabsTrigger>
-                <TabsTrigger value="model">Данные модели</TabsTrigger>
-              </TabsList>
-              <TabsContent value="collect">
-                <SourceBadges items={badges} />
-                <pre className="m-0 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-ink bg-ink p-3 font-mono text-xs leading-snug text-[#fafafa]">
-                  {collectView}
-                </pre>
-              </TabsContent>
-              <TabsContent value="prompt">
-                <pre className="m-0 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-ink bg-ink p-3 font-mono text-xs leading-snug text-[#fafafa]">
-                  {promptView}
-                </pre>
-              </TabsContent>
-              <TabsContent value="model">
-                <pre className="m-0 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-ink bg-ink p-3 font-mono text-xs leading-snug text-[#fafafa]">
-                  {modelView}
-                </pre>
-              </TabsContent>
-            </Tabs>
+            <Accordion
+              type="multiple"
+              value={workOpenItems}
+              onValueChange={setWorkOpenItems}
+              className="rounded-lg border border-border px-3"
+            >
+              <AccordionItem value="collect">
+                <AccordionTrigger>
+                  <span className="flex items-center gap-1.5">
+                    <Database className="size-3.5 shrink-0" />
+                    Собранные данные
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <SourceBadges items={badges} />
+                  <pre className="m-0 min-h-[16rem] max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-ink bg-ink p-3 font-mono text-xs leading-snug text-[#fafafa]">
+                    {collectView}
+                  </pre>
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="prompt">
+                <AccordionTrigger>
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="size-3.5 shrink-0" />
+                    Промпт
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <textarea
+                    value={promptView}
+                    onChange={(event) => setPromptView(event.target.value)}
+                    disabled={modeling}
+                    spellCheck={false}
+                    className="m-0 min-h-[16rem] w-full resize-y overflow-auto whitespace-pre-wrap break-words rounded-lg border border-ink bg-ink p-3 font-mono text-xs leading-snug text-[#fafafa] outline-none focus:ring-2 focus:ring-ring disabled:opacity-70"
+                  />
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="model">
+                <AccordionTrigger>
+                  <span className="flex items-center gap-1.5">
+                    <Braces className="size-3.5 shrink-0" />
+                    Данные модели
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <pre className="m-0 min-h-[16rem] max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-ink bg-ink p-3 font-mono text-xs leading-snug text-[#fafafa]">
+                    {modelView}
+                  </pre>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </Card>
         ) : null}
       </main>

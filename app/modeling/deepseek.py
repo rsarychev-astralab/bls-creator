@@ -42,6 +42,13 @@ def fill_prompt(pack: dict) -> str:
     return text
 
 
+def resolve_prompt(pack: dict, prompt: str | None = None) -> str:
+    custom = (prompt or "").strip()
+    if custom:
+        return prompt
+    return fill_prompt(pack)
+
+
 def _extract_json(raw: str):
     text = (raw or "").strip()
     if text.startswith("```"):
@@ -50,13 +57,13 @@ def _extract_json(raw: str):
     return json.loads(text)
 
 
-def model_pack(pack: dict) -> dict:
+def model_pack(pack: dict, prompt: str | None = None) -> dict:
     if not DEEPSEEK_API_KEY:
         raise RuntimeError("Пустой DEEPSEEK_API_KEY")
     q = pack.get("questionnaire") or {}
     if not q.get("text"):
         raise RuntimeError(q.get("error") or "Нет текста анкеты, моделировать нельзя")
-    prompt = fill_prompt(pack)
+    prompt = resolve_prompt(pack, prompt)
     body = {
         "model": DEEPSEEK_MODEL,
         "messages": [

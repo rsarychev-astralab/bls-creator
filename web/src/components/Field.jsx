@@ -13,9 +13,12 @@ function Field({ label, value, isLink = false, wrap = false, className, icon: Ic
         </Label>
       ) : null}
       <div
+        title={!empty && !wrap ? String(value) : undefined}
         className={cn(
-          "min-h-9 rounded-lg border border-input bg-card px-2.5 py-1.5 text-sm",
-          wrap && "whitespace-pre-wrap break-words leading-snug",
+          "rounded-lg border border-input bg-card px-2.5 text-sm",
+          wrap
+            ? "min-h-9 py-1.5 whitespace-pre-wrap break-words leading-snug"
+            : "flex h-9 items-center overflow-hidden",
           empty && "text-[#b3b3b3]"
         )}
       >
@@ -26,13 +29,18 @@ function Field({ label, value, isLink = false, wrap = false, className, icon: Ic
             href={value}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-start gap-1 break-all text-link hover:underline"
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1 text-link hover:underline",
+              wrap ? "break-all items-start" : "truncate"
+            )}
           >
-            <span>{value}</span>
-            <ExternalLink className="mt-0.5 size-3.5 shrink-0" />
+            <span className={wrap ? undefined : "truncate"}>{value}</span>
+            <ExternalLink className="size-3.5 shrink-0" />
           </a>
-        ) : (
+        ) : wrap ? (
           value
+        ) : (
+          <span className="truncate">{value}</span>
         )}
       </div>
     </div>

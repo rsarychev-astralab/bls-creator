@@ -19,6 +19,7 @@ DIST = ROOT / "web" / "dist"
 
 class RowIn(BaseModel):
     row: int
+    prompt: str | None = None
 
 
 @app.get("/health")
@@ -77,7 +78,7 @@ def api_model(body: RowIn):
     if not pack:
         raise HTTPException(400, "Сначала собери данные исследования")
     try:
-        result = model_pack(pack)
+        result = model_pack(pack, body.prompt)
     except ModelCancelled as exc:
         raise HTTPException(499, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

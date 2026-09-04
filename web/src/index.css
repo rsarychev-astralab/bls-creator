@@ -36,6 +36,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
 }
 
 :root {
@@ -84,5 +86,75 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-size: 16px;
     line-height: 1.45;
+  }
+}
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+@keyframes raccoon-peek {
+  from {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes raccoon-sway {
+  0%,
+  100% {
+    transform: rotate(-5deg) translateY(0);
+  }
+  50% {
+    transform: rotate(5deg) translateY(-4px);
+  }
+}
+
+@keyframes raccoon-blink {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+  94% {
+    transform: scaleY(0.08);
+  }
+}
+
+.critter-raccoon {
+  opacity: 1;
+  animation: raccoon-peek 0.55s ease-out;
+  cursor: pointer;
+}
+
+.critter-raccoon-inner {
+  animation: raccoon-sway 2.4s ease-in-out 0.55s infinite;
+}
+
+.critter-raccoon-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: raccoon-blink 4.2s ease-in-out 1s infinite;
+}
+
+.critter-raccoon-eye-right {
+  animation-delay: 1.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .critter-raccoon,
+  .critter-raccoon-inner,
+  .critter-raccoon-eye {
+    animation: none;
   }
 }
