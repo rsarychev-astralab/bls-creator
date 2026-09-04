@@ -1,6 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import ROOT
@@ -8,13 +7,14 @@ from app.output.result_xlsx import RESULTS_DIR
 from app.net import force_ipv4
 from app.modeling.deepseek import ModelCancelled, cancel_model, fill_prompt, model_pack
 from app.output.result_sheet import write_result_sheet
-from app.sources.collect import collect_campaign, get_pack
+from app.sources.collect import attach_questionnaire, collect_campaign, get_pack
+from app.sources.questionnaire import text_from_upload
 from app.sources.sheet import get_campaign, list_campaigns
 
 force_ipv4()
 
 app = FastAPI(title="BLS Creator", docs_url=None, redoc_url=None)
-app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+DIST = ROOT / "web" / "dist"
 
 
 class RowIn(BaseModel):
@@ -56,6 +56,21 @@ def api_collect(body: RowIn):
         raise HTTPException(500, str(exc)) from exc
 
 
+@app.post("/api/questionnaire")
+async def api_questionnaire(row: int = Form(...), file: UploadFile = File(...)):
+    raw = await file.read()
+    name = (file.filename or "анкета").strip()
+    text = text_from_upload(name, raw)
+    if not text:
+        raise HTTPException(400, "Не удалось прочитать файл анкеты. Нужен .xlsx, .docx, .txt, .md или .csv")
+    try:
+        pack = attach_questionnaire(row, name, text)
+    except KeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    pack["prompt"] = fill_prompt(pack)
+    return pack
+
+
 @app.post("/api/model")
 def api_model(body: RowIn):
     pack = get_pack(body.row)
@@ -94,4 +109,19 @@ def api_result_file(filename: str):
 
 @app.get("/")
 def index():
-    return FileResponse(ROOT / "static" / "index.html")
+    index_path = DIST / "index.html"
+    if index_path.is_file():
+        return FileResponse(index_path)
+    raise HTTPException(404, "Фронт не собран. В web/: npm install && npm run build")
+
+
+@app.get("/{asset_path:path}")
+def frontend_asset(asset_path: str):
+    if not DIST.is_dir():
+        raise HTTPException(404, "Фронт не собран")
+    target = (DIST / asset_path).resolve()
+    if DIST.resolve() not in target.parents:
+        raise HTTPException(404)
+    if target.is_file():
+        return FileResponse(target)
+    raise HTTPException(404)

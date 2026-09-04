@@ -1,4 +1,5 @@
-from app.sources.collect import brand_from_name, crm_deal_url, notion_deal_url
+from app.sources.collect import _PACKS, attach_questionnaire, brand_from_name, crm_deal_url, notion_deal_url
+from app.sources.questionnaire import text_from_upload
 from app.sources.crm import deal_id_from_url, extract_bt_url, extract_closing, extract_deal_properties
 from app.sources.notion import notion_page_id
 
@@ -91,3 +92,39 @@ def test_deal_urls():
     assert notion_deal_url(sheet, crm) == sheet
     assert crm_deal_url(crm) == "https://crm.al-ad.tech/deals?deal=6a7e507bed6862fdb3e7259f"
     assert crm_deal_url({"deal_id": "6a7e507bed6862fdb3e7259f"}) == "https://crm.al-ad.tech/deals?deal=6a7e507bed6862fdb3e7259f"
+
+
+def test_text_from_upload_txt():
+    assert "бренд" in text_from_upload("q.txt", "Вопрос про бренд\n".encode("utf-8"))
+
+
+def test_text_from_upload_empty():
+    assert text_from_upload("q.txt", b"") == ""
+
+
+def test_text_from_upload_xlsx():
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    sheet = wb.active
+    sheet.title = "Анкета"
+    sheet["A1"] = "Рекламируемый бренд"
+    sheet["B1"] = "TCL"
+    buf = BytesIO()
+    wb.save(buf)
+    text = text_from_upload("anketa.xlsx", buf.getvalue())
+    assert "Рекламируемый бренд" in text
+    assert "TCL" in text
+
+
+def test_attach_questionnaire():
+    _PACKS[1] = {"questionnaire": {"ok": False}, "sources": {}}
+    try:
+        pack = attach_questionnaire(1, "anketa.txt", "текст")
+        assert pack["questionnaire"]["ok"] is True
+        assert pack["questionnaire"]["name"] == "anketa.txt"
+        assert pack["sources"]["questionnaire"] == "upload"
+    finally:
+        _PACKS.pop(1, None)

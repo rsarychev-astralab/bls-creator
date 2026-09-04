@@ -30,6 +30,9 @@ __pycache__/
 .coverage
 htmlcov/
 
+# frontend
+web/node_modules/
+
 # tools / OS
 .DS_Store
 .idea/

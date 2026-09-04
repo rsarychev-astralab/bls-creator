@@ -145,3 +145,18 @@ def collect_campaign(row_num: int) -> dict:
 
 def get_pack(row_num: int) -> dict | None:
     return _PACKS.get(row_num)
+
+
+def attach_questionnaire(row_num: int, name: str, text: str) -> dict:
+    pack = _PACKS.get(row_num)
+    if not pack:
+        raise KeyError(f"Сначала собери данные исследования")
+    pack["questionnaire"] = {
+        "ok": True,
+        "error": "",
+        "name": name,
+        "text": text,
+        "source": "upload",
+    }
+    pack["sources"]["questionnaire"] = "upload"
+    return pack

@@ -4,6 +4,7 @@ from io import BytesIO
 
 import httpx
 from docx import Document
+from openpyxl import load_workbook
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
@@ -32,6 +33,45 @@ def drive_file_id(url: str) -> str:
 def _drive():
     creds = Credentials.from_service_account_file(str(sa_path()), scopes=SCOPES)
     return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+
+def xlsx_to_text(data: bytes) -> str:
+    wb = load_workbook(BytesIO(data), data_only=True, read_only=True)
+    parts = []
+    try:
+        for sheet in wb.worksheets:
+            if sheet.title:
+                parts.append(f"# {sheet.title}")
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+    finally:
+        wb.close()
+    return "\n".join(parts).strip()
+
+
+def text_from_upload(name: str, data: bytes, mime: str = "") -> str:
+    if not data:
+        return ""
+    lower = (name or "").lower()
+    mime = (mime or "").lower()
+    if lower.endswith(".xlsx") or "spreadsheetml.sheet" in mime:
+        return xlsx_to_text(data)
+    if lower.endswith(".docx") or "wordprocessingml" in mime:
+        try:
+            return docx_to_text(data)
+        except Exception:
+            return ""
+    if data[:2] == b"PK":
+        try:
+            return xlsx_to_text(data)
+        except Exception:
+            try:
+                return docx_to_text(data)
+            except Exception:
+                return ""
+    return data.decode("utf-8-sig", errors="replace").strip()
 
 
 def docx_to_text(data: bytes) -> str:
@@ -99,8 +139,13 @@ def fetch_questionnaire_from_notion(crm_url: str) -> dict:
                 errors.append(f"{name}: download {downloaded.status_code}")
                 continue
             ctype = downloaded.headers.get("content-type", "")
-            if "wordprocessingml" in ctype or name.lower().endswith(".docx"):
-                texts.append(docx_to_text(downloaded.content))
+            if (
+                "spreadsheetml.sheet" in ctype
+                or name.lower().endswith(".xlsx")
+                or "wordprocessingml" in ctype
+                or name.lower().endswith(".docx")
+            ):
+                texts.append(text_from_upload(name, downloaded.content, ctype))
             else:
                 texts.append(downloaded.text)
         text = "\n\n".join(t for t in texts if t).strip()
@@ -149,7 +194,8 @@ def fetch_questionnaire(url: str) -> dict:
             done = False
             while not done:
                 _, done = downloader.next_chunk()
-            text = buf.getvalue().decode("utf-8", errors="replace")
+            raw = buf.getvalue()
+            text = text_from_upload(meta.get("name", ""), raw, mime)
         return {
             "ok": True,
             "error": "",
