@@ -1,0 +1,19 @@
+[Unit]
+Description=BLS Creator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bls
+Group=bls
+WorkingDirectory=/opt/bls-creator
+EnvironmentFile=/opt/bls-creator/.env
+ExecStart=/opt/bls-creator/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --timeout-keep-alive 180
+Restart=on-failure
+RestartSec=5
+# Модель может думать до 3 минут
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

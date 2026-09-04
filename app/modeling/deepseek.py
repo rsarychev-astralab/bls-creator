@@ -31,6 +31,7 @@ def fill_prompt(pack: dict) -> str:
     text = PROMPT_PATH.read_text(encoding="utf-8")
     repl = {
         "{{CAMPAIGN_NAME}}": campaign.get("name", ""),
+        "{{ADVERTISER}}": pack.get("advertiser", ""),
         "{{ADVERTISED_BRAND}}": pack.get("advertised_brand", ""),
         "{{RESEARCH_TYPE}}": campaign.get("research_type", ""),
         "{{QUESTIONNAIRE}}": q.get("text") or q.get("error") or "",
@@ -57,13 +58,80 @@ def _extract_json(raw: str):
     return json.loads(text)
 
 
-def model_pack(pack: dict, prompt: str | None = None) -> dict:
-    if not DEEPSEEK_API_KEY:
-        raise RuntimeError("Пустой DEEPSEEK_API_KEY")
-    q = pack.get("questionnaire") or {}
-    if not q.get("text"):
-        raise RuntimeError(q.get("error") or "Нет текста анкеты, моделировать нельзя")
-    prompt = resolve_prompt(pack, prompt)
+def _reasoning_text(message: dict) -> str:
+    for key in ("reasoning_content", "reasoning", "thinking"):
+        val = message.get(key)
+        if isinstance(val, str) and val.strip():
+            return val
+        if isinstance(val, dict):
+            text = val.get("content") or val.get("text") or ""
+            if text.strip():
+                return text
+    return ""
+
+
+def _extract_embedded_array(raw: str):
+    text = (raw or "").strip()
+    start = text.find("[")
+    if start < 0:
+        return None
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, list) else None
+
+
+def extract_json_payload(content: str, reasoning: str = ""):
+    for raw in (content, reasoning):
+        if not (raw or "").strip():
+            continue
+        try:
+            return _extract_json(raw)
+        except json.JSONDecodeError:
+            embedded = _extract_embedded_array(raw)
+            if embedded is not None:
+                return embedded
+    raise RuntimeError("Модель вернула пустой или не-JSON ответ")
+
+
+def validate_model_payload(parsed):
+    if not isinstance(parsed, list):
+        raise RuntimeError("Модель вернула не JSON-массив")
+    if parsed == []:
+        return parsed
+    if len(parsed) != 1 or not isinstance(parsed[0], dict) or not parsed[0]:
+        raise RuntimeError("В корне нужен массив из одного объекта кампании")
+    block = next(iter(parsed[0].values()))
+    if not isinstance(block, dict):
+        raise RuntimeError("Объект кампании пустой")
+    questions = block.get("questions")
+    if not isinstance(questions, list) or not questions:
+        raise RuntimeError("В ответе нет questions")
+    for question in questions:
+        for row in question.get("responses") or []:
+            for key in ("contact_count", "noncontact_count"):
+                if not isinstance(row.get(key), int):
+                    raise RuntimeError(f"{key} должен быть целым числом")
+    return parsed
+
+
+def _choice_message(data: dict) -> dict:
+    return (data.get("choices") or [{}])[0].get("message") or {}
+
+
+def _usage_from(data: dict) -> dict:
+    usage = data.get("usage") or {}
+    details = usage.get("completion_tokens_details") or {}
+    return {
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "total_tokens": usage.get("total_tokens"),
+        "reasoning_tokens": details.get("reasoning_tokens") or usage.get("reasoning_tokens"),
+    }
+
+
+def _chat_body(prompt: str, thinking: bool) -> dict:
     body = {
         "model": DEEPSEEK_MODEL,
         "messages": [
@@ -76,8 +144,34 @@ def model_pack(pack: dict, prompt: str | None = None) -> dict:
                 ),
             },
         ],
-        "thinking": {"type": "enabled"},
     }
+    if thinking:
+        body["thinking"] = {"type": "enabled"}
+    return body
+
+
+def _post_chat(client: httpx.Client, body: dict) -> dict:
+    resp = client.post(
+        "https://api.deepseek.com/chat/completions",
+        headers={
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=body,
+    )
+    data = resp.json()
+    if resp.status_code != 200:
+        raise RuntimeError(data.get("error", {}).get("message") or f"DeepSeek {resp.status_code}")
+    return data
+
+
+def model_pack(pack: dict, prompt: str | None = None) -> dict:
+    if not DEEPSEEK_API_KEY:
+        raise RuntimeError("Пустой DEEPSEEK_API_KEY")
+    q = pack.get("questionnaire") or {}
+    if not q.get("text"):
+        raise RuntimeError(q.get("error") or "Нет текста анкеты, моделировать нельзя")
+    prompt = resolve_prompt(pack, prompt)
     client = httpx.Client(timeout=180.0, verify=False)
     global _client
     with _lock:
@@ -85,19 +179,21 @@ def model_pack(pack: dict, prompt: str | None = None) -> dict:
             _client.close()
         _client = client
     started = time.monotonic()
+    content = ""
+    data = {}
     try:
-        resp = client.post(
-            "https://api.deepseek.com/chat/completions",
-            headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-        )
-        data = resp.json()
-        if resp.status_code != 200:
-            raise RuntimeError(data.get("error", {}).get("message") or f"DeepSeek {resp.status_code}")
-        content = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        data = _post_chat(client, _chat_body(prompt, thinking=True))
+        message = _choice_message(data)
+        content = message.get("content") or ""
+        reasoning = _reasoning_text(message)
+        try:
+            parsed = validate_model_payload(extract_json_payload(content, reasoning))
+        except RuntimeError:
+            data = _post_chat(client, _chat_body(prompt, thinking=False))
+            message = _choice_message(data)
+            content = message.get("content") or ""
+            reasoning = _reasoning_text(message)
+            parsed = validate_model_payload(extract_json_payload(content, reasoning))
     except (httpx.HTTPError, httpx.StreamError, RuntimeError) as exc:
         with _lock:
             cancelled = _client is None
@@ -110,19 +206,11 @@ def model_pack(pack: dict, prompt: str | None = None) -> dict:
                 client.close()
                 _client = None
     elapsed = round(time.monotonic() - started, 1)
-    parsed = _extract_json(content)
-    usage = data.get("usage") or {}
-    details = usage.get("completion_tokens_details") or {}
     return {
-        "raw": content,
+        "raw": content or reasoning,
         "payload": parsed,
         "prompt": prompt,
         "model": data.get("model", DEEPSEEK_MODEL),
         "elapsed_sec": elapsed,
-        "usage": {
-            "prompt_tokens": usage.get("prompt_tokens"),
-            "completion_tokens": usage.get("completion_tokens"),
-            "total_tokens": usage.get("total_tokens"),
-            "reasoning_tokens": details.get("reasoning_tokens") or usage.get("reasoning_tokens"),
-        },
+        "usage": _usage_from(data),
     }

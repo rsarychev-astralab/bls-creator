@@ -150,6 +150,7 @@ export default function App() {
     setModelView("Сначала смоделируй исследование");
     setBadges([
       { label: "Карточка", source: crm.source || src.brand || "crm", ok: Boolean(crm.ok) },
+      { label: "Рекламодатель", source: src.advertiser || src.brand, ok: Boolean(pack.advertiser) },
       { label: "Бренд", source: src.brand, ok: Boolean(pack.advertised_brand) },
       { label: "Гео", source: src.geo, ok: Boolean(pack.geo) },
       { label: "ЦА", source: src.targeting, ok: Boolean(pack.targeting) },

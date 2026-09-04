@@ -1,4 +1,11 @@
-from app.sources.collect import _PACKS, attach_questionnaire, brand_from_name, crm_deal_url, notion_deal_url
+from app.sources.collect import (
+    _PACKS,
+    attach_questionnaire,
+    brand_from_name,
+    crm_deal_url,
+    notion_deal_url,
+    resolve_brands,
+)
 from app.sources.questionnaire import text_from_upload
 from app.sources.crm import deal_id_from_url, extract_bt_url, extract_closing, extract_deal_properties
 from app.sources.notion import notion_page_id
@@ -43,6 +50,33 @@ def test_extract_deal_properties():
 
 def test_brand_from_name():
     assert brand_from_name("I / Pikador AstraCTV Мск Лето-Осень 2026 | jul-sep") == "Pikador"
+    assert brand_from_name("I / DNS TCL SuperSkin Лето-Осень 2026 | aug-sep") == "DNS TCL"
+
+
+def test_resolve_brands_dns_tcl():
+    name = "I / DNS TCL SuperSkin Лето-Осень 2026 | aug-sep"
+    q = "Анкета БЛС TCL TV. Какие бренды телевизоров вам знакомы? TCL, Samsung, LG."
+    brands = resolve_brands(name, "DNS", q)
+    assert brands["advertiser"] == "DNS"
+    assert brands["advertised_brand"] == "TCL"
+    assert brands["advertised_source"] == "questionnaire"
+
+
+def test_resolve_brands_dns_tcl_from_name():
+    brands = resolve_brands("I / DNS TCL SuperSkin Лето-Осень 2026 | aug-sep", "DNS", "")
+    assert brands["advertiser"] == "DNS"
+    assert brands["advertised_brand"] == "TCL"
+    assert brands["advertised_source"] == "name"
+
+
+def test_resolve_brands_pikador_keeps_product():
+    brands = resolve_brands(
+        "I / Pikador AstraCTV Мск Лето-Осень 2026 | jul-sep",
+        "Heinz",
+        "Какие бренды кетчупа знакомы? Pikador, Махеевъ.",
+    )
+    assert brands["advertiser"] == "Heinz"
+    assert brands["advertised_brand"] == "Pikador"
 
 
 def test_extract_closing():

@@ -63,6 +63,7 @@ export function sourceLabel(value) {
   if (value === "name") return "название РК";
   if (value === "crm+notion") return "CRM + Notion";
   if (value === "upload") return "загрузка";
+  if (value === "questionnaire") return "анкета";
   return value || "нет";
 }
 
@@ -71,6 +72,7 @@ export function collectPreview(pack) {
   const crm = pack.crm || {};
   return {
     campaign: pack.campaign.name,
+    advertiser: pack.advertiser,
     advertised_brand: pack.advertised_brand,
     geo: pack.geo,
     targeting: pack.targeting,

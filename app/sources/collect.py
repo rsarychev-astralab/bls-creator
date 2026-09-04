@@ -1,3 +1,5 @@
+import re
+
 from app.sources.crm import fetch_crm
 from app.sources.notion import fetch_notion_deal
 from app.sources.questionnaire import fetch_questionnaire, fetch_questionnaire_from_notion
@@ -32,15 +34,77 @@ def crm_deal_url(crm: dict | None) -> str:
     return ""
 
 
+_FORMAT_SEPS = (
+    " Astra",
+    " Smart",
+    " Attention",
+    " White",
+    " Reach",
+    " In-",
+    " SuperSkin",
+    " Super ",
+    " CTV",
+)
+_SKIP_NAME_TOKENS = {"i", "мск", "рф", "tv", "ctv"}
+
+
 def brand_from_name(name: str) -> str:
     text = (name or "").strip()
     if text.startswith("I /"):
         text = text[3:].strip()
-    for sep in (" Astra", " Smart", " Attention", " White", " Reach", " In-"):
+    for sep in _FORMAT_SEPS:
         idx = text.find(sep)
         if idx > 0:
             return text[:idx].strip(" /|-")
     return text.split("|")[0].strip()
+
+
+def brand_from_questionnaire(text: str, name: str, advertiser: str = "") -> str:
+    if not (text or "").strip():
+        return ""
+    candidates = []
+    for part in re.findall(r"[A-Za-zА-Яа-яЁё0-9&]{2,}", brand_from_name(name)):
+        if part.lower() not in _SKIP_NAME_TOKENS:
+            candidates.append(part)
+    if advertiser and advertiser.strip() not in candidates:
+        candidates.append(advertiser.strip())
+    scored = []
+    for cand in candidates:
+        count = len(re.findall(re.escape(cand), text, re.I))
+        if count:
+            scored.append((count, cand))
+    if not scored:
+        return ""
+    scored.sort(key=lambda item: item[0], reverse=True)
+    advert = (advertiser or "").strip().lower()
+    for count, cand in scored:
+        if cand.lower() != advert:
+            return cand
+    return scored[0][1]
+
+
+def resolve_brands(name: str, advertiser: str = "", questionnaire_text: str = "") -> dict:
+    advert = (advertiser or "").strip()
+    from_name = brand_from_name(name)
+    from_q = brand_from_questionnaire(questionnaire_text, name, advert)
+    advertised = from_q or from_name
+    source = "questionnaire" if from_q else "name"
+    if advert and advertised.lower().startswith(advert.lower()):
+        rest = advertised[len(advert) :].strip(" /|-")
+        if rest:
+            advertised = rest
+            if not from_q:
+                source = "name"
+    if not advertised:
+        advertised = advert
+        source = "crm" if advert else ""
+    if not advert:
+        advert = from_name or advertised
+    return {
+        "advertiser": advert,
+        "advertised_brand": advertised,
+        "advertised_source": source,
+    }
 
 
 def _fill_from_notion(props: dict, sources: dict, crm_url: str) -> dict:
@@ -113,13 +177,18 @@ def collect_campaign(row_num: int) -> dict:
         crm["properties"] = props
 
     sources["questionnaire"] = questionnaire.get("source") or ""
-    brand = props.get(_PROP_BRAND) or brand_from_name(campaign["name"])
+    brands = resolve_brands(
+        campaign["name"],
+        props.get(_PROP_BRAND) or "",
+        questionnaire.get("text") or "",
+    )
     if not sources[_PROP_BRAND]:
-        sources[_PROP_BRAND] = "name"
+        sources[_PROP_BRAND] = "name" if brands["advertiser"] else ""
     pack = {
         "row": row_num,
         "campaign": campaign,
-        "advertised_brand": brand,
+        "advertiser": brands["advertiser"],
+        "advertised_brand": brands["advertised_brand"],
         "geo": props.get(_PROP_GEO, ""),
         "targeting": props.get(_PROP_TARGET, ""),
         "crm_deal_url": crm_deal_url(crm),
@@ -131,7 +200,8 @@ def collect_campaign(row_num: int) -> dict:
         "questionnaire": questionnaire,
         "crm": crm,
         "sources": {
-            "brand": sources[_PROP_BRAND],
+            "advertiser": sources[_PROP_BRAND],
+            "brand": brands["advertised_source"],
             "geo": sources[_PROP_GEO],
             "targeting": sources[_PROP_TARGET],
             "questionnaire": sources["questionnaire"],
@@ -159,4 +229,12 @@ def attach_questionnaire(row_num: int, name: str, text: str) -> dict:
         "source": "upload",
     }
     pack["sources"]["questionnaire"] = "upload"
+    brands = resolve_brands(
+        (pack.get("campaign") or {}).get("name") or "",
+        pack.get("advertiser") or "",
+        text,
+    )
+    pack["advertiser"] = brands["advertiser"]
+    pack["advertised_brand"] = brands["advertised_brand"]
+    pack["sources"]["brand"] = brands["advertised_source"]
     return pack

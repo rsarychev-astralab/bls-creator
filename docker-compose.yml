@@ -1,0 +1,25 @@
+services:
+  bls:
+    build: .
+    container_name: bls-creator
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      GOOGLE_SERVICE_ACCOUNT_FILE: /app/service-account.json
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ${GOOGLE_SERVICE_ACCOUNT_FILE:-./service-account.json}:/app/service-account.json:ro
+      - ./data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 20s
