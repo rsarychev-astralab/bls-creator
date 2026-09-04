@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.config import ROOT
 from app.output.result_xlsx import RESULTS_DIR
 from app.net import force_ipv4
-from app.modeling.deepseek import ModelCancelled, cancel_model, model_pack
+from app.modeling.deepseek import ModelCancelled, cancel_model, fill_prompt, model_pack
 from app.output.result_sheet import write_result_sheet
 from app.sources.collect import collect_campaign, get_pack
 from app.sources.sheet import get_campaign, list_campaigns
@@ -47,7 +47,9 @@ def api_campaign(row: int):
 @app.post("/api/collect")
 def api_collect(body: RowIn):
     try:
-        return collect_campaign(body.row)
+        pack = collect_campaign(body.row)
+        pack["prompt"] = fill_prompt(pack)
+        return pack
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

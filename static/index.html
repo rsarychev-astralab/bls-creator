@@ -65,9 +65,17 @@
           <label>Количество респондентов</label>
           <div id="f-respondents" class="readonly empty">—</div>
         </div>
-        <div>
-          <label>Время генерации</label>
-          <div id="f-elapsed" class="readonly empty">—</div>
+        <div class="span-2">
+          <div class="grid">
+            <div>
+              <label>Время генерации</label>
+              <div id="f-elapsed" class="readonly empty">—</div>
+            </div>
+            <div>
+              <label>Токены</label>
+              <div id="f-tokens" class="readonly empty">—</div>
+            </div>
+          </div>
         </div>
         <div class="span-2">
           <label>Результаты исследования</label>
@@ -83,15 +91,22 @@
       <div id="status" class="status"></div>
     </section>
 
-    <section class="card" id="collect-card" hidden>
-      <h2>Собранные данные</h2>
-      <div id="collect-meta" class="meta-row"></div>
-      <pre id="collect-view"></pre>
-    </section>
-
-    <section class="card" id="model-card" hidden>
-      <h2>Результат модели</h2>
-      <pre id="model-view"></pre>
+    <section class="card" id="work-card" hidden>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab is-active" data-tab="collect" role="tab">Собранные данные</button>
+        <button type="button" class="tab" data-tab="prompt" role="tab">Промпт</button>
+        <button type="button" class="tab" data-tab="model" role="tab">Данные модели</button>
+      </div>
+      <div class="tab-panel" id="panel-collect" data-panel="collect">
+        <div id="collect-meta" class="meta-row"></div>
+        <pre id="collect-view"></pre>
+      </div>
+      <div class="tab-panel" id="panel-prompt" data-panel="prompt" hidden>
+        <pre id="prompt-view"></pre>
+      </div>
+      <div class="tab-panel" id="panel-model" data-panel="model" hidden>
+        <pre id="model-view"></pre>
+      </div>
     </section>
   </main>
 

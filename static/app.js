@@ -45,6 +45,22 @@ function formatElapsed(sec) {
   return `${m} мин ${s} сек`;
 }
 
+function formatCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString("ru-RU");
+}
+
+function formatTokens(usage) {
+  if (!usage || usage.total_tokens == null) return "";
+  const total = formatCount(usage.total_tokens);
+  const parts = [];
+  if (usage.prompt_tokens != null) parts.push(`вход ${formatCount(usage.prompt_tokens)}`);
+  if (usage.completion_tokens != null) parts.push(`выход ${formatCount(usage.completion_tokens)}`);
+  if (usage.reasoning_tokens != null) parts.push(`мысли ${formatCount(usage.reasoning_tokens)}`);
+  return parts.length ? `${total} (${parts.join(", ")})` : total;
+}
+
 function formatRespondents(contact, noncontact) {
   const c = Number(contact);
   const n = Number(noncontact);
@@ -120,6 +136,7 @@ function renderFields(item) {
   fillReadonly($("f-targeting"), item && item.targeting);
   fillReadonly($("f-respondents"), item ? formatRespondents(item.respondents_contact, item.respondents_noncontact) : "");
   fillReadonly($("f-elapsed"), "");
+  fillReadonly($("f-tokens"), "");
   fillReadonly($("f-result"), item && item.result_url, true);
 }
 
@@ -151,10 +168,28 @@ select.addEventListener("change", () => {
   btnCollect.disabled = !current;
   btnModel.disabled = true;
   btnStop.disabled = true;
-  $("collect-card").hidden = true;
-  $("model-card").hidden = true;
+  $("work-card").hidden = true;
+  $("collect-view").textContent = "";
+  $("prompt-view").textContent = "";
+  $("model-view").textContent = "";
+  activateTab("collect");
   renderFields(current);
   setStatus(current ? "Можно собирать данные" : "");
+});
+
+function activateTab(name) {
+  for (const btn of document.querySelectorAll(".tab")) {
+    btn.classList.toggle("is-active", btn.dataset.tab === name);
+  }
+  for (const panel of document.querySelectorAll(".tab-panel")) {
+    panel.hidden = panel.dataset.panel !== name;
+  }
+}
+
+document.querySelector(".tabs")?.addEventListener("click", (event) => {
+  const btn = event.target.closest(".tab");
+  if (!btn) return;
+  activateTab(btn.dataset.tab);
 });
 
 async function postJson(url, body, signal) {
@@ -232,7 +267,10 @@ btnCollect.addEventListener("click", async () => {
     renderClosing(current.closing);
     fillReadonly($("f-targeting"), current.targeting);
     fillReadonly($("f-respondents"), formatRespondents(current.respondents_contact, current.respondents_noncontact));
-    $("collect-card").hidden = false;
+    $("work-card").hidden = false;
+    activateTab("collect");
+    $("prompt-view").textContent = pack.prompt || "Промпт ещё не собран";
+    $("model-view").textContent = "Сначала смоделируй исследование";
     const q = pack.questionnaire || {};
     const crm = pack.crm || {};
     const src = pack.sources || {};
@@ -280,9 +318,12 @@ btnModel.addEventListener("click", async () => {
   setStatus("Моделирую в DeepSeek. Это может занять минуту…");
   try {
     const result = await postJson("/api/model", { row: current.row }, modelAbort.signal);
-    $("model-card").hidden = false;
+    $("work-card").hidden = false;
+    if (result.prompt) $("prompt-view").textContent = result.prompt;
     $("model-view").textContent = JSON.stringify(result.payload, null, 2);
+    activateTab("model");
     fillReadonly($("f-elapsed"), formatElapsed(result.elapsed_sec));
+    fillReadonly($("f-tokens"), formatTokens(result.usage));
     fillReadonly($("f-result"), result.spreadsheet_url, true);
     const modeled = respondentsFromPayload(result.payload);
     if (modeled) fillReadonly($("f-respondents"), modeled);

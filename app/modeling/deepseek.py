@@ -104,9 +104,18 @@ def model_pack(pack: dict) -> dict:
                 _client = None
     elapsed = round(time.monotonic() - started, 1)
     parsed = _extract_json(content)
+    usage = data.get("usage") or {}
+    details = usage.get("completion_tokens_details") or {}
     return {
         "raw": content,
         "payload": parsed,
+        "prompt": prompt,
         "model": data.get("model", DEEPSEEK_MODEL),
         "elapsed_sec": elapsed,
+        "usage": {
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+            "reasoning_tokens": details.get("reasoning_tokens") or usage.get("reasoning_tokens"),
+        },
     }
